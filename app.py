@@ -4,6 +4,7 @@ import chess, chess.engine
 from werkzeug.exceptions import BadRequest
 from coaching import coach_line, priorities, move_notes
 from openings import guide
+from game_review import parse_game, review_batch
 
 app = Flask(__name__)
 ENGINE = os.getenv("STOCKFISH_PATH") or shutil.which("stockfish") or "/usr/games/stockfish"
@@ -102,5 +103,32 @@ def analyze():
     except BadRequest:
         raise
     except Exception as e: return jsonify(error="Stockfish 실행에 실패했습니다: "+str(e)),503
+
+@app.post("/api/pgn")
+def import_pgn():
+    try:
+        data=request.get_json(force=True)
+        if not isinstance(data,dict):raise ValueError("JSON 객체로 요청해 주세요.")
+        return jsonify(parse_game(data.get('pgn')))
+    except (ValueError,TypeError) as exc:return jsonify(error=str(exc)),400
+
+
+@app.post("/api/review")
+def game_review():
+    try:
+        data=request.get_json(force=True)
+        if not isinstance(data,dict):raise ValueError("JSON 객체로 요청해 주세요.")
+        game=parse_game(data.get('pgn'))
+        start=data.get('start',0)
+        if not isinstance(start,int) or isinstance(start,bool) or not 0<=start<game['total']:
+            raise ValueError("리뷰 시작 위치가 올바르지 않아요.")
+        with lock:
+            with chess.engine.SimpleEngine.popen_uci(ENGINE,timeout=40) as engine:
+                engine.configure({"Threads":1,"Hash":32})
+                return jsonify(review_batch(engine,game,start,4))
+    except (ValueError,TypeError) as exc:return jsonify(error=str(exc)),400
+    except BadRequest:raise
+    except Exception:return jsonify(error="게임 리뷰 중 엔진 응답을 받지 못했어요. 완료된 부분부터 다시 이어갈 수 있어요."),503
+
 
 if __name__=="__main__": app.run(host="0.0.0.0",port=int(os.getenv("PORT",5000)))

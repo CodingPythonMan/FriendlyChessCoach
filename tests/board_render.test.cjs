@@ -4,7 +4,7 @@ const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
 const html=fs.readFileSync('templates/index.html','utf8');
-const script=html.match(/<script>([\s\S]*?)<\/script>/)[1].split('\ndraw();api(')[0];
+const script=html.match(/<script>([\s\S]*?)<\/script>/)[1].split('\ndraw();')[0];
 function fixture(reduced=false){
   const pending=[],events=[];
   class Element{
@@ -12,6 +12,8 @@ function fixture(reduced=false){
     set textContent(text){this._text=text;this.children=[]}
     get textContent(){return this._text}
     append(child){child.parent=this;this.children.push(child)}
+    prepend(child){child.parent=this;this.children.unshift(child)}
+    replaceChildren(){this.children=[];this._text=''}
     setAttribute(k,v){this.attributes[k]=v}
     focus(options){this.focusOptions=options}
     insertAdjacentHTML(_,text){const svg=new Element('svg');this.children.unshift(svg);svg.parent=this}
@@ -22,8 +24,9 @@ function fixture(reduced=false){
     getBoundingClientRect(){return {left:10,top:20,width:50,height:this.height||50}}
     animate(){let finish;const finished=new Promise(resolve=>finish=resolve);pending.push(finish);return {finished}}
   }
-  const elements=new Map(),document={body:new Element('body'),createElement:tag=>new Element(tag),getElementById:id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id)}};
+  const elements=new Map(),document={addEventListener:()=>{},body:new Element('body'),createElement:tag=>new Element(tag),getElementById:id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id)}};
   const context=vm.createContext({document,localStorage:{getItem:()=>null},matchMedia:()=>({matches:reduced}),AbortController,console});
+  vm.runInContext(fs.readFileSync('static/review.js','utf8'),context);
   vm.runInContext(script,context);
   const run=code=>vm.runInContext(code,context);
   run('draw()');
@@ -89,4 +92,23 @@ test('turn changes keep the perspective message short and on a single line',()=>
  const f=fixture();assert.equal(f.elements.get('perspective').textContent,'나는 백 · 내 차례예요.');
  f.run("fen='rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';draw()");
  assert.equal(f.elements.get('perspective').textContent,'나는 백 · 상대 차례예요.');
+});
+
+
+test('cached game navigation and side changes make zero API calls',async()=>{
+ const f=fixture();
+ f.run(`
+  globalThis.networkCalls=0;api=async()=>{networkCalls++;throw Error('Unexpected network request')};
+  renderGameReview=()=>{};
+  showAnalysis=()=>{$('results').dataset.stale='false'};
+  const start={fen:START,legal:['e2e4'],status:'백 차례'};
+  const end={fen:'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',legal:[],status:'흑 차례'};
+  const cached={white:{...start,my_turn:true,lines:[{move:'e2e4'}]},black:{...start,my_turn:false,lines:[{move:'e2e4'}]}};
+  loadedGame={total:1,positions:[start,end],moves:[{fen:START,move:'e2e4',san:'e4'}],reviews:[{analysis:cached,number:1,color:'white',san:'e4',grade:'무난한 수',loss_cp:0,explanation:'test',best_san:'e4'}],finalAnalysis:{white:{...end,lines:[]},black:{...end,lines:[]}}};
+  navigateGame(0);navigateGame(1);navigateGame(0);
+ `);
+ await f.run("chooseSide('black')");
+ assert.equal(f.run('networkCalls'),0);
+ assert.equal(f.run('pgnCursor'),0);
+ assert.match(f.elements.get('analysis-progress').textContent,/새 엔진 분석 없음/);
 });
