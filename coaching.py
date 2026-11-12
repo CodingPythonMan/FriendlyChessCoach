@@ -7,6 +7,12 @@ VALUES = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.
 CENTER = {chess.D4, chess.E4, chess.D5, chess.E5}
 
 
+def particle(word, ending):
+    """Choose Korean particles for the fixed Korean piece names."""
+    has_final = (ord(word[-1]) - 0xAC00) % 28 != 0
+    return word + (ending[0] if has_final else ending[1])
+
+
 def label(color, player):
     return '나' if color == player else '상대'
 
@@ -31,7 +37,7 @@ def move_notes(board, move):
         motif = 'castle'
     if board.is_capture(move):
         captured = chess.PAWN if board.is_en_passant(move) else board.piece_type_at(move.to_square)
-        reasons.append(f'{dst}의 상대 {NAMES[captured]}을 잡아요.' if not board.is_en_passant(move)
+        reasons.append(f'{dst}의 상대 {particle(NAMES[captured], "을를")} 잡아요.' if not board.is_en_passant(move)
                        else '앙파상으로 방금 두 칸 전진한 상대 폰을 잡아요.')
         if motif == 'activity': motif = 'capture'
     if move.promotion:
@@ -39,13 +45,13 @@ def move_notes(board, move):
         if motif != 'mate': motif = 'promotion'
     home = 0 if piece.color else 7
     if piece.piece_type in (chess.KNIGHT, chess.BISHOP) and chess.square_rank(move.from_square) == home:
-        reasons.append(f'{src}에서 대기하던 {name}를 {dst}로 전개해요. 아직 움직이지 않은 기물도 경기에 참여시키는 수예요.')
+        reasons.append(f'{src}에서 대기하던 {particle(name, "을를")} {dst} 칸으로 전개해요. 아직 움직이지 않은 기물도 경기에 참여시키는 수예요.')
         if motif == 'activity': motif = 'develop'
     attacks = set(after.attacks(move.to_square))
     central = sorted(attacks & CENTER)
     if central:
         squares = '·'.join(chess.square_name(s) for s in central)
-        reasons.append(f'이동한 {name}가 중앙 {squares} 칸을 공격해요. 상대가 그 칸을 편하게 쓰기 어려워져요.')
+        reasons.append(f'이동한 {particle(name, "이가")} 중앙 {squares} 칸을 공격해요. 상대가 그 칸을 편하게 쓰기 어려워져요.')
         if motif == 'activity': motif = 'center'
     elif move.to_square in CENTER:
         reasons.append(f'{dst} 중앙 칸에 기물을 놓아 공간을 챙겨요.')
@@ -58,9 +64,9 @@ def move_notes(board, move):
     targets.sort(key=lambda s: VALUES.get(after.piece_type_at(s), 0), reverse=True)
     if targets:
         text = ', '.join(f'{chess.square_name(s)} {NAMES[after.piece_type_at(s)]}' for s in targets[:2])
-        reasons.append(f'이동한 {name}가 상대 {text}을 공격해요. 다만 상대도 피하거나 지킬 수 있으니 “공짜 기물 발견!”은 아직 이르답니다.')
+        reasons.append(f'이동한 {particle(name, "이가")} 상대 기물({text})을 공격해요. 다만 상대도 피하거나 지킬 수 있으니 “공짜 기물 발견!”은 아직 이르답니다.')
     if not reasons:
-        reasons.append(f'{name}를 {src}에서 {dst}로 옮겨요. 이 수의 장점은 뒤에 이어지는 예상 수순과 함께 살펴봐요.')
+        reasons.append(f'{particle(name, "을를")} {src}에서 {dst} 칸으로 옮겨요. 이 수의 장점은 뒤에 이어지는 예상 수순과 함께 살펴봐요.')
     analogy = {
         'mate': '상대 왕의 마지막 비상구까지 닫혔어요. 오늘의 명탐정은 바로 이 기물이네요!',
         'defense': '집에 경보가 울리면 인테리어보다 불부터 꺼야겠죠? 왕의 안전을 먼저 챙겨요.',
@@ -115,9 +121,9 @@ def coach_line(board, pv, player):
         notes = move_notes(focus_board, focus_move)
         if mine:
             headline = f"지금은 {steps[0]['instruction']}"
-            intro = f"내 차례네요! 엔진과 함께 고른 첫 번째 후보는 {steps[0]['san']}입니다."
+            intro = f"내 차례네요! 엔진과 함께 고른 첫 번째 후보는 {steps[0]['san']} 수예요."
         else:
-            headline = f"상대가 {steps[0]['san']}를 두면, 나는 {steps[1]['san']}"
+            headline = f"상대가 {steps[0]['san']} 수를 두면, 나는 {steps[1]['san']}"
             intro = f"지금은 상대 차례예요. 우리도 다음 장면을 준비해 볼까요? {steps[0]['instruction']}를 예상하고, 그때 {steps[1]['instruction']}로 대응하는 수순이에요. 상대가 다르게 두면 새로 작전 회의를 열어봐요."
     else:
         notes = dict(reasons=['이 예상 수순에서는 상대의 수로 게임이 끝나서 내 응수는 없어요.'], analogy='다음 작전보다 게임이 끝나는지부터 살펴볼 장면이에요.')
