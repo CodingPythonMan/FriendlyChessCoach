@@ -13,6 +13,7 @@ function fixture(reduced=false){
     get textContent(){return this._text}
     append(child){child.parent=this;this.children.push(child)}
     setAttribute(k,v){this.attributes[k]=v}
+    focus(options){this.focusOptions=options}
     insertAdjacentHTML(_,text){const svg=new Element('svg');this.children.unshift(svg);svg.parent=this}
     set innerHTML(text){this.children=[];this.insertAdjacentHTML('afterbegin',text)}
     querySelector(selector){return this.children.find(c=>selector==='svg'?c.tagName==='svg':c.className===selector.slice(1))||null}
@@ -71,4 +72,20 @@ test('waiting for analysis preserves the explanation and its height',()=>{
  f.run('invalidate()');
  assert.equal(results.textContent,'Existing explanation');assert.equal(results.style.minHeight,'900px');
  assert.equal(results.dataset.stale,'true');assert.ok(f.elements.get('analysis-progress').textContent);
+});
+
+
+test('pointer focus prevents automatic scrolling without removing keyboard access',()=>{
+ const f=fixture(),square=f.run("squares.get('e2')");let prevented=false;
+ square.onmousedown({button:0,preventDefault(){prevented=true}});
+ assert.equal(prevented,true);assert.equal(square.focusOptions.preventScroll,true);
+ assert.equal(square.onkeydown,undefined);
+ let secondaryPrevented=false;square.onmousedown({button:2,preventDefault(){secondaryPrevented=true}});
+ assert.equal(secondaryPrevented,false);
+});
+
+test('turn changes keep the perspective message short and on a single line',()=>{
+ const f=fixture();assert.equal(f.elements.get('perspective').textContent,'나는 백 · 내 차례예요.');
+ f.run("fen='rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';draw()");
+ assert.equal(f.elements.get('perspective').textContent,'나는 백 · 상대 차례예요.');
 });
