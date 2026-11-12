@@ -2,6 +2,7 @@ import os, shutil, threading
 from flask import Flask, jsonify, request, render_template
 import chess, chess.engine
 from werkzeug.exceptions import BadRequest
+from coaching import coach_line, priorities, move_notes
 
 app = Flask(__name__)
 ENGINE = os.getenv("STOCKFISH_PATH") or shutil.which("stockfish") or "/usr/games/stockfish"
@@ -33,19 +34,6 @@ def state(b):
     else: status = ("백" if b.turn else "흑") + " 차례"
     return dict(fen=b.fen(),legal=[m.uci() for m in b.legal_moves],status=status,game_over=bool(result))
 
-def explain(b,m):
-    p=b.piece_at(m.from_square)
-    reasons=[]
-    if b.is_castling(m): reasons.append("캐슬링으로 왕을 안전하게 옮깁니다.")
-    if b.is_capture(m): reasons.append("상대 기물을 잡습니다.")
-    if m.promotion: reasons.append("폰을 승격합니다.")
-    if p and p.piece_type in (chess.BISHOP,chess.KNIGHT) and chess.square_rank(m.from_square) in (0,7): reasons.append("기물을 전개해 활동성을 높입니다.")
-    if chess.square_file(m.to_square) in (3,4) and chess.square_rank(m.to_square) in (3,4): reasons.append("중앙을 차지하거나 압박합니다.")
-    copy=b.copy();copy.push(m)
-    if copy.is_checkmate(): reasons.insert(0,"이 수로 체크메이트입니다!")
-    elif copy.is_check(): reasons.append("상대 왕에게 체크를 겁니다.")
-    return " ".join(reasons) or "엔진이 좋은 후속 수순을 찾았습니다. 아래 예상 수순을 살펴보세요."
-
 @app.get("/")
 def home(): return render_template("index.html")
 
@@ -70,10 +58,16 @@ def move():
 def analyze():
     try:
         data=request.get_json(force=True);b=board_from(data)
-        if b.is_game_over(): return jsonify(**state(b),lines=[],explanation="게임이 종료되었습니다.")
+        side=data.get("player_color", "white")
+        if side not in ("white", "black"): raise ValueError("내 편은 white 또는 black으로 선택해 주세요.")
+        player=side == "white"
+        goals, material=priorities(b, player)
+        context=dict(player_color=side, my_turn=b.turn == player, priorities=goals, material_text=material)
+        if b.is_game_over(): return jsonify(**state(b),**context,lines=[],explanation="게임이 종료되었습니다.")
         depth=max(6,min(20,int(data.get("depth",12))))
         with lock:
             with chess.engine.SimpleEngine.popen_uci(ENGINE,timeout=40) as engine:
+                engine.configure({"Threads": 1, "Hash": 32})
                 infos=engine.analyse(b,chess.engine.Limit(depth=depth,time=3),multipv=min(3,b.legal_moves.count()))
         lines=[]
         for info in infos:
@@ -83,11 +77,11 @@ def analyze():
             tmp=b.copy();sans=[]
             for m in pv[:8]:
                 sans.append(tmp.san(m));tmp.push(m)
-            lines.append(dict(move=pv[0].uci(),san=b.san(pv[0]),score_cp=score.score(mate_score=100000),mate=score.mate(),pv=sans,explanation=explain(b,pv[0])))
+            lines.append(dict(move=pv[0].uci(),san=b.san(pv[0]),score_cp=score.score(mate_score=100000),mate=score.mate(),pv=sans,player_score_cp=info["score"].pov(player).score(mate_score=100000),player_mate=info["score"].pov(player).mate(),actual_depth=info.get("depth"),coach=coach_line(b,pv,player),explanation=" ".join(move_notes(b,pv[0])["reasons"])))
         if not lines: return jsonify(error="엔진 분석 결과가 없습니다."),503
-        cp=lines[0]["score_cp"]
-        balance="백 우세" if cp>60 else "흑 우세" if cp< -60 else "대체로 균형"
-        return jsonify(**state(b),lines=lines,depth=depth,score_text=balance,explanation="추천: "+lines[0]["san"]+". "+lines[0]["explanation"])
+        cp=lines[0]["player_score_cp"]
+        balance="내가 유리" if cp>60 else "상대가 유리" if cp< -60 else "대체로 균형"
+        return jsonify(**state(b),**context,lines=lines,depth=depth,score_text=balance,explanation=lines[0]["coach"]["intro"])
     except (ValueError,TypeError) as e: return jsonify(error=str(e)),400
     except BadRequest:
         raise
