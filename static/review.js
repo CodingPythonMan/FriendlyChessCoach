@@ -54,12 +54,38 @@ function showGameCache(){
  if(row){const card=node('article',undefined,'card');card.append(node('span',row.grade,'badge'));
   card.append(node('h3',`실제로 둔 수: ${row.number}${row.color==='white'?'.':'...'} ${row.san} (${row.color==='white'?'백':'흑'})`));
   card.append(node('p',row.explanation));card.append(node('p',`대안: ${row.best_san} · 추정 평가 손실 ${row.loss_cp>=9000?'메이트 수순 차이':(row.loss_cp/100).toFixed(2)+'폰'}`,'muted'));
+  appendMoveComparison(card,row);
   card.append(node('small','이 수를 두기 전의 판이에요. 다음 ▶를 누르면 실제 수를 둔 뒤로 이동해요. 수순 목록에서 다른 장면도 바로 살펴볼 수 있어요.'));
   $('results').prepend(card);
  }
  best=view.lines?.[0]?.move||'';
  $('best').textContent=view.my_turn?'추천 수 두기':'상대 예상 수 두기';
  progress('저장된 리뷰를 바로 보여드려요 · 새 엔진 분석 없음');controls();return true;
+}
+function appendMoveComparison(card,row){
+ const detail=row.comparison;
+ if(detail){
+  card.append(node('h4','왜 차이가 나는지 함께 살펴봐요'));
+  card.append(node('p',detail.verdict));
+  const facts=node('ul');for(const fact of detail.facts)facts.append(node('li',fact));card.append(facts);
+  for(const [title,steps] of [['실제로 둔 수 뒤 · 상대의 응수와 내 대응',detail.played],['대안을 뒀을 때 · 비교 수순',detail.alternative]]){
+   card.append(node('h4',title));card.append(node('p',steps.map(x=>x.text).join(' → '),'context-note'));
+   const expanded=node('details');expanded.append(node('summary','한 수씩 이유 보기'));
+   const list=node('ol');for(const step of steps)list.append(node('li',`${step.text} · ${step.reason}`));expanded.append(list);card.append(expanded);
+  }
+  card.append(node('p',detail.lesson));card.append(node('small',detail.caveat));
+ }
+ const button=node('button',detail?'비교를 다시 자세히 확인':'왜 이 수인가요? · 두 수 자세히 비교','control');
+ button.onclick=async()=>{
+  const game=loadedGame,index=row.ply-1;button.disabled=true;button.textContent='두 수와 상대 응수를 비교하고 있어요…';
+  try{
+   const result=await api('review/detail',{pgn:game.pgn,index});
+   if(result.game_id!==game.id||result.row.ply!==index+1)throw Error('기보와 비교 결과가 맞지 않아요.');
+   game.reviews[index]=result.row;await saveGame(game);
+   if(loadedGame===game){renderGameReview();if(!pgnBranch&&pgnCursor===index){shownSnapshot=null;showGameCache()}}
+  }catch(e){button.disabled=false;button.textContent='다시 비교하기';card.append(node('p',e.message,'error'))}
+ };
+ card.append(button);
 }
 function saveDetailedGameAnalysis(result){
  if(!loadedGame||pgnBranch||result.fen!==fen)return;

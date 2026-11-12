@@ -24,7 +24,7 @@ class GameReviewTests(unittest.TestCase):
   g=parse_game(pgn);self.assertEqual(g['moves'][0]['color'],'black');self.assertEqual(g['moves'][0]['number'],23)
  def test_root_move_comparison_black_perspective(self):
   b=chess.Board();b.push_san('e4');move=b.parse_san('f6');best=b.parse_san('e5')
-  engine=MagicMock();engine.analyse.side_effect=[{'pv':[best],'score':chess.engine.PovScore(chess.engine.Cp(0),False),'depth':9}, {'pv':[move],'score':chess.engine.PovScore(chess.engine.Cp(-250),False)}]
+  engine=MagicMock();engine.analyse.side_effect=[{'pv':[best],'score':chess.engine.PovScore(chess.engine.Cp(0),False),'depth':9}, {'pv':[move],'score':chess.engine.PovScore(chess.engine.Cp(-250),False)}]*2
   row=review_move(engine,b,move,1)
   self.assertEqual(row['grade'],'큰 실수');self.assertEqual(row['loss_cp'],250)
   self.assertEqual(row['analysis']['black']['lines'][0]['player_score_cp'],0)

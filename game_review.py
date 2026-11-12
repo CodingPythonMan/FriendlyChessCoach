@@ -6,6 +6,7 @@ import chess.pgn
 import chess.engine
 from coaching import move_notes, coach_line, priorities
 from openings import key, names, guide
+from review_explanations import compare_moves
 
 MAX_PLIES=512
 
@@ -61,9 +62,9 @@ def classify(best_score,played_score,is_best=False,mate=False):
     return '큰 실수',3,loss
 
 
-def review_move(engine,board,move,index):
-    mover=board.turn;san=board.san(move)
-    best_info=engine.analyse(board,chess.engine.Limit(time=0.25,depth=12))
+def review_move(engine,board,move,index,thorough=False):
+    mover=board.turn;san=board.san(move);played_pv=[move]
+    best_info=engine.analyse(board,chess.engine.Limit(time=2) if thorough else chess.engine.Limit(time=0.25,depth=12))
     pv=best_info.get('pv',[])
     if not pv:raise RuntimeError('엔진의 추천 수를 받지 못했어요.')
     best=pv[0];best_score=best_info['score'].pov(mover)
@@ -72,13 +73,15 @@ def review_move(engine,board,move,index):
     if terminal:
         played_score=chess.engine.Cp(0) if terminal.winner is None else -chess.engine.Mate(0) if terminal.winner==mover else chess.engine.Mate(0)
     elif move==best:
-        played_score=best_score
+        played_score=best_score;played_pv=pv
     else:
-        played_info=engine.analyse(board,chess.engine.Limit(time=0.25,depth=12),root_moves=[move])
-        played_score=played_info['score'].pov(mover)
+        played_info=engine.analyse(board,chess.engine.Limit(time=2) if thorough else chess.engine.Limit(time=0.25,depth=12),root_moves=[move])
+        played_score=played_info['score'].pov(mover);played_pv=played_info.get('pv',[move])
     # Mate scores are bounded for ranking; separate mate fields preserve their meaning in the UI.
     before_cp=best_score.score(mate_score=10000);after_cp=played_score.score(mate_score=10000)
     grade,severity,loss=classify(before_cp,after_cp,move==best,after.is_checkmate())
+    if severity>=2 and not thorough:
+        return review_move(engine,board,move,index,thorough=True)
     if best_score.mate() is not None and best_score.mate()>0 and played_score.mate() is None and move!=best:
         grade='메이트 수순 이탈 추정';severity=max(severity,2)
     temp=board.copy();pv_san=[]
@@ -99,6 +102,7 @@ def review_move(engine,board,move,index):
                 loss_cp=loss,before_cp=before_cp,after_cp=after_cp,
                 before_mate=best_score.mate(),after_mate=played_score.mate(),
                 best_move=best.uci(),best_san=board.san(best),pv=pv_san,
+                comparison=compare_moves(board,move,best,played_pv,pv,grade,loss) if thorough else None,
                 explanation=explanation,analysis=snapshot(board,best_info),best_reasons=notes['reasons'],best_capture=board.is_capture(best),
                 best_check=board.gives_check(best),exposed=exposed,depth=best_info.get('depth'))
 

@@ -4,7 +4,7 @@ import chess, chess.engine
 from werkzeug.exceptions import BadRequest
 from coaching import coach_line, priorities, move_notes
 from openings import guide
-from game_review import parse_game, review_batch
+from game_review import parse_game, review_batch, review_move
 
 app = Flask(__name__)
 ENGINE = os.getenv("STOCKFISH_PATH") or shutil.which("stockfish") or "/usr/games/stockfish"
@@ -130,5 +130,25 @@ def game_review():
     except BadRequest:raise
     except Exception:return jsonify(error="게임 리뷰 중 엔진 응답을 받지 못했어요. 완료된 부분부터 다시 이어갈 수 있어요."),503
 
+
+
+@app.post("/api/review/detail")
+def review_detail():
+    try:
+        data=request.get_json(force=True)
+        if not isinstance(data,dict):raise ValueError("JSON 객체로 요청해 주세요.")
+        game=parse_game(data.get('pgn'));index=data.get('index')
+        if not isinstance(index,int) or isinstance(index,bool) or not 0<=index<game['total']:
+            raise ValueError("수순 위치가 올바르지 않아요.")
+        board=chess.Board(game['start_fen'])
+        for row in game['moves'][:index]:board.push_uci(row['move'])
+        with lock:
+            with chess.engine.SimpleEngine.popen_uci(ENGINE,timeout=40) as engine:
+                engine.configure({"Threads":1,"Hash":32})
+                row=review_move(engine,board,chess.Move.from_uci(game['moves'][index]['move']),index,thorough=True)
+        return jsonify(game_id=game['id'],row=row)
+    except (ValueError,TypeError) as exc:return jsonify(error=str(exc)),400
+    except BadRequest:raise
+    except Exception:return jsonify(error="자세한 비교를 받지 못했어요. 잠시 후 다시 시도해 주세요."),503
 
 if __name__=="__main__": app.run(host="0.0.0.0",port=int(os.getenv("PORT",5000)))
