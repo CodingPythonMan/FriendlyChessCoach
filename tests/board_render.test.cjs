@@ -112,3 +112,21 @@ test('cached game navigation and side changes make zero API calls',async()=>{
  assert.equal(f.run('pgnCursor'),0);
  assert.match(f.elements.get('analysis-progress').textContent,/새 엔진 분석 없음/);
 });
+
+test('alternate moves preserve the imported game and can return to its exact position',async()=>{
+ const f=fixture(true);
+ f.run(`
+  renderGameReview=()=>{};showGameCache=()=>false;
+  loadedGame={total:1,positions:[{fen:START,legal:['e2e4','d2d4'],status:'백 차례'}],moves:[{fen:START,move:'e2e4',san:'e4'}],reviews:[]};
+  globalThis.original=JSON.stringify(loadedGame);
+  api=async()=>({fen:'rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq - 0 1',legal:['d7d5'],san:'d4',status:'흑 차례'});
+ `);
+ await f.run("play('d2d4')");
+ assert.equal(f.run('pgnBranch'),true);
+ assert.equal(f.run('JSON.stringify(loadedGame)===original'),true);
+ assert.equal(f.elements.get('branch-tools').hidden,false);
+ f.run('navigateGame(pgnCursor)');
+ assert.equal(f.run('pgnBranch'),false);
+ assert.equal(f.run('fen===START'),true);
+ assert.equal(f.elements.get('branch-tools').hidden,true);
+});

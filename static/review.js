@@ -23,6 +23,12 @@ function detachGame(){stopGameReview();loadedGame=null;pgnCursor=0;pgnBranch=fal
 function updateGameControls(){
  if(!document.getElementById('game-nav'))return;
  $('workspace').dataset.mode=loadedGame?'review':'setup';
+ $('workspace').dataset.branch=String(!!(loadedGame&&pgnBranch));
+ $('branch-tools').hidden=!(loadedGame&&pgnBranch);
+ $('branch-return').disabled=busy;
+ $('branch-best').disabled=busy||analyzing||!best;
+ $('branch-analyze').disabled=busy||analyzing;
+ $('branch-status').textContent=loadedGame&&pgnBranch?`다른 수 탐색 중 · 원래 기보 ${pgnCursor}반수 장면에서 시작했어요.`:'';
  $('new-game-review').disabled=busy;
  $('import-pgn').disabled=busy;$('analyze').textContent=loadedGame?'이 장면 자세히 재분석':'✨ 다음 수 알려주세요';
  if(!loadedGame)return;
@@ -33,7 +39,7 @@ function updateGameControls(){
 }
 function drawGameNavigation(){
  if(!loadedGame)return;
- $('game-nav').hidden=false;$('game-cursor').max=loadedGame.total;$('game-cursor').value=pgnCursor;
+ $('game-nav').hidden=false;$('game-cursor').max=loadedGame.total;$('game-cursor').value=pgnCursor;$('game-seek').disabled=true;$('seek-preview').textContent='바로 위치를 고른 뒤 ‘선택 위치로 이동’을 눌러 확정하세요.';
  $('game-position').textContent=`${pgnCursor} / ${loadedGame.total} 반수${pgnBranch?' · 변형 탐색 중 (위 버튼으로 원래 기보에 돌아갈 수 있어요)':''}`;
 }
 function showGameCache(){
@@ -149,7 +155,11 @@ document.addEventListener('DOMContentLoaded',()=>{
  $('import-pgn').onclick=importGame;$('review-start').onclick=startGameReview;$('review-stop').onclick=stopGameReview;
  $('game-start').onclick=()=>navigateGame(0);$('game-prev').onclick=()=>navigateGame(pgnCursor-1);
  $('game-next').onclick=()=>navigateGame(pgnCursor+1);$('game-end').onclick=()=>navigateGame(loadedGame?.total||0);
- $('game-cursor').oninput=()=>navigateGame(+$('game-cursor').value);
+ $('game-cursor').oninput=()=>{$('seek-preview').textContent=`${$('game-cursor').value} / ${loadedGame?.total||0} 반수 선택 · 이동 버튼을 눌러 확정하세요.`;$('game-seek').disabled=busy||!loadedGame};
+ $('game-seek').onclick=()=>navigateGame(+$('game-cursor').value);
+ $('branch-return').onclick=()=>navigateGame(pgnCursor);
+ $('branch-best').onclick=()=>{if(best)play(best)};
+ $('branch-analyze').onclick=()=>analyze(true);
  $('sample-pgn').onclick=()=>{$('pgn').value=SAMPLE_PGN};$('restore-review').onclick=restoreGame;
  $('pgn-file').onchange=async()=>{const file=$('pgn-file').files[0];if(!file)return;if(file.size>150000){gameMessage('150KB 이하의 PGN 파일을 선택해 주세요.',true);return}$('pgn').value=await file.text();gameMessage('파일을 읽었어요. 불러오기 버튼을 눌러 주세요.')};
  storageTask('readonly',store=>store.get('latest')).then(game=>{if(game?.id){savedGameAvailable=true;$('restore-review').hidden=false;gameMessage('이 브라우저에 저장된 게임·리뷰가 있어요. 바로 다시 열 수 있어요.')}}).catch(()=>{});
