@@ -16,6 +16,7 @@ function fixture(reduced=false){
     focus(options){this.focusOptions=options}
     insertAdjacentHTML(_,text){const svg=new Element('svg');this.children.unshift(svg);svg.parent=this}
     set innerHTML(text){this.children=[];this.insertAdjacentHTML('afterbegin',text)}
+    querySelectorAll(selector){return this.children.filter(c=>c.tagName===selector)}
     querySelector(selector){return this.children.find(c=>selector==='svg'?c.tagName==='svg':c.className===selector.slice(1))||null}
     remove(){events.push(this.className==='moving-piece'?'remove-ghost':'remove-node');if(this.parent)this.parent.children=this.parent.children.filter(c=>c!==this);this.parent=null}
     getBoundingClientRect(){return {left:10,top:20,width:50,height:this.height||50}}

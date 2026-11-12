@@ -51,8 +51,8 @@ class CoachTests(unittest.TestCase):
         info={'pv':pv,'score':chess.engine.PovScore(chess.engine.Cp(120),chess.WHITE),'depth':9}
         engine=MagicMock();engine.__enter__.return_value=engine;engine.analyse.return_value=[info]
         with patch('app.chess.engine.SimpleEngine.popen_uci',return_value=engine):
-            white=app.test_client().post('/api/analyze',json={'player_color':'white'}).get_json()
-            black=app.test_client().post('/api/analyze',json={'player_color':'black'}).get_json()
+            white=app.test_client().post('/api/analyze',json={'player_color':'white','repertoire':False}).get_json()
+            black=app.test_client().post('/api/analyze',json={'player_color':'black','repertoire':False}).get_json()
         self.assertTrue(white['my_turn']);self.assertFalse(black['my_turn'])
         self.assertEqual(white['score_text'],'내가 유리');self.assertEqual(black['score_text'],'상대가 유리')
         self.assertEqual(black['lines'][0]['player_score_cp'],-120)

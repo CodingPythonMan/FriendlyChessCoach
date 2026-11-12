@@ -1,0 +1,2 @@
+Opening-name subset from https://github.com/lichess-org/chess-openings (CC0 / public domain), retrieved 2026-11-12.
+Contains 207 named English/Caro-Kann positions through 8 plies and selected flexible openings through 4 plies from a.tsv and b.tsv. Runtime matching uses board position, not just move order. The hand-authored learning repertoire is separate from the naming dataset and is not a claim about statistical popularity or forced best moves.

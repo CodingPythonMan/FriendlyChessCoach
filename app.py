@@ -3,6 +3,7 @@ from flask import Flask, jsonify, request, render_template
 import chess, chess.engine
 from werkzeug.exceptions import BadRequest
 from coaching import coach_line, priorities, move_notes
+from openings import guide
 
 app = Flask(__name__)
 ENGINE = os.getenv("STOCKFISH_PATH") or shutil.which("stockfish") or "/usr/games/stockfish"
@@ -62,13 +63,28 @@ def analyze():
         if side not in ("white", "black"): raise ValueError("내 편은 white 또는 black으로 선택해 주세요.")
         player=side == "white"
         goals, material=priorities(b, player)
-        context=dict(player_color=side, my_turn=b.turn == player, priorities=goals, material_text=material)
+        opening=guide(b,player,data)
+        enabled=data.get("repertoire",True)
+        if not isinstance(enabled,bool):raise ValueError("오프닝 안내 설정은 true 또는 false여야 합니다.")
+        book_move=opening.pop("candidate") if enabled else None
+        opening["candidate"]=None
+        context=dict(player_color=side, my_turn=b.turn == player, priorities=goals, material_text=material,opening=opening)
         if b.is_game_over(): return jsonify(**state(b),**context,lines=[],explanation="게임이 종료되었습니다.")
         depth=max(6,min(20,int(data.get("depth",12))))
         with lock:
             with chess.engine.SimpleEngine.popen_uci(ENGINE,timeout=40) as engine:
                 engine.configure({"Threads": 1, "Hash": 32})
                 infos=engine.analyse(b,chess.engine.Limit(depth=depth,time=3),multipv=min(3,b.legal_moves.count()))
+                if book_move and infos:
+                    candidate=chess.Move.from_uci(book_move)
+                    book_info=next((i for i in infos if i.get("pv") and i["pv"][0]==candidate),None)
+                    if book_info is None:
+                        book_info=engine.analyse(b,chess.engine.Limit(time=0.5),root_moves=[candidate])
+                    best_score=infos[0]["score"].pov(b.turn).score(mate_score=100000)
+                    candidate_score=book_info["score"].pov(b.turn).score(mate_score=100000)
+                    gap=max(0,best_score-candidate_score)
+                    opening["candidate"]=dict(move=book_move,san=b.san(candidate),allowed=gap<=80,
+                        comparison=("짧은 엔진 비교에서 큰 차이가 없어요. 학습 후보로 살펴봐요." if gap<=80 else "엔진 평가 차이가 커서 정석을 고집하기보다 아래 엔진 추천을 우선 살펴봐요."))
         lines=[]
         for info in infos:
             pv=info.get("pv",[])
