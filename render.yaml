@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: friendly-chess-coach
+    runtime: docker
+    plan: free
+    healthCheckPath: /
