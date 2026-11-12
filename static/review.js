@@ -19,9 +19,11 @@ function saveGame(game){
  return saveQueue;
 }
 function stopGameReview(){reviewToken++;reviewController?.abort();reviewController=null;reviewRunning=false;renderGameReview()}
-function detachGame(){stopGameReview();loadedGame=null;pgnCursor=0;pgnBranch=false;$('game-nav').hidden=true;$('review-panel').hidden=true}
+function detachGame(){stopGameReview();loadedGame=null;pgnCursor=0;pgnBranch=false;$('game-nav').hidden=true;$('review-panel').hidden=true;updateGameControls()}
 function updateGameControls(){
  if(!document.getElementById('game-nav'))return;
+ $('workspace').dataset.mode=loadedGame?'review':'setup';
+ $('new-game-review').disabled=busy;
  $('import-pgn').disabled=busy;$('analyze').textContent=loadedGame?'이 장면 자세히 재분석':'✨ 다음 수 알려주세요';
  if(!loadedGame)return;
  for(const id of ['game-start','game-prev'])$(id).disabled=busy||pgnCursor<=0;
@@ -46,7 +48,7 @@ function showGameCache(){
  if(row){const card=node('article',undefined,'card');card.append(node('span',row.grade,'badge'));
   card.append(node('h3',`실제로 둔 수: ${row.number}${row.color==='white'?'.':'...'} ${row.san} (${row.color==='white'?'백':'흑'})`));
   card.append(node('p',row.explanation));card.append(node('p',`대안: ${row.best_san} · 추정 평가 손실 ${row.loss_cp>=9000?'메이트 수순 차이':(row.loss_cp/100).toFixed(2)+'폰'}`,'muted'));
-  card.append(node('small','이 수를 두기 전의 판이에요. 다음 ▶를 누르면 실제 수를 둔 뒤로 이동해요. 자세히 보고 싶으면 아래 분석 버튼으로 다시 계산할 수 있어요.'));
+  card.append(node('small','이 수를 두기 전의 판이에요. 다음 ▶를 누르면 실제 수를 둔 뒤로 이동해요. 수순 목록에서 다른 장면도 바로 살펴볼 수 있어요.'));
   $('results').prepend(card);
  }
  best=view.lines?.[0]?.move||'';
@@ -137,7 +139,13 @@ async function restoreGame(){
   gameMessage(`저장된 게임을 열었어요. ${game.reviews.length} / ${game.total}반수 리뷰가 준비돼 있어요.`);
  }catch(e){gameMessage(e.message,true)}
 }
+async function newGameReview(){
+ if(busy)return;detachGame();invalidate();busy=true;controls();
+ try{const state=await api('position',{fen:START});history=[];future=[];selected='';lastMove='';applyState(state);$('results').replaceChildren();progress('새 PGN을 불러오거나 FEN·직접 두기로 분석을 시작해 주세요.');$('pgn').value='';$('pgn-file').value='';$('pgn-import').open=true;gameMessage('새 게임을 가져와 주세요. 이전 리뷰는 새 게임을 불러오기 전까지 저장돼 있어요.');$('pgn').focus({preventScroll:true})}
+ catch(e){gameMessage(e.message,true)}finally{busy=false;controls()}
+}
 document.addEventListener('DOMContentLoaded',()=>{
+ $('new-game-review').onclick=newGameReview;
  $('import-pgn').onclick=importGame;$('review-start').onclick=startGameReview;$('review-stop').onclick=stopGameReview;
  $('game-start').onclick=()=>navigateGame(0);$('game-prev').onclick=()=>navigateGame(pgnCursor-1);
  $('game-next').onclick=()=>navigateGame(pgnCursor+1);$('game-end').onclick=()=>navigateGame(loadedGame?.total||0);
