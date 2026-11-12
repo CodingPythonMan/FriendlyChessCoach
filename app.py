@@ -1,14 +1,24 @@
 import os, shutil, threading
 from flask import Flask, jsonify, request, render_template
 import chess, chess.engine
+from werkzeug.exceptions import BadRequest
 
 app = Flask(__name__)
 ENGINE = os.getenv("STOCKFISH_PATH") or shutil.which("stockfish") or "/usr/games/stockfish"
 lock = threading.Lock()
 
+@app.errorhandler(BadRequest)
+def invalid_json(exc):
+    return jsonify(error="올바른 JSON 요청을 보내 주세요."), 400
+
 def board_from(data):
+    if not isinstance(data, dict):
+        raise ValueError("JSON 객체로 요청해 주세요.")
+    fen = data.get("fen")
+    if fen is not None and not isinstance(fen, str):
+        raise ValueError("FEN은 문자열이어야 합니다.")
     try:
-        b = chess.Board(data.get("fen") or chess.STARTING_FEN)
+        b = chess.Board(fen or chess.STARTING_FEN)
     except (ValueError, TypeError) as exc:
         raise ValueError("FEN 형식 오류: " + str(exc))
     if not b.is_valid():
@@ -48,7 +58,9 @@ def position():
 def move():
     try:
         data=request.get_json(force=True);b=board_from(data)
-        m=chess.Move.from_uci(data.get("move",""))
+        uci=data.get("move", "")
+        if not isinstance(uci, str): raise ValueError("수는 UCI 문자열이어야 합니다.")
+        m=chess.Move.from_uci(uci)
         if m not in b.legal_moves: raise ValueError("합법적인 수가 아닙니다.")
         san=b.san(m);b.push(m)
         return jsonify(**state(b),san=san)
@@ -77,6 +89,8 @@ def analyze():
         balance="백 우세" if cp>60 else "흑 우세" if cp< -60 else "대체로 균형"
         return jsonify(**state(b),lines=lines,depth=depth,score_text=balance,explanation="추천: "+lines[0]["san"]+". "+lines[0]["explanation"])
     except (ValueError,TypeError) as e: return jsonify(error=str(e)),400
+    except BadRequest:
+        raise
     except Exception as e: return jsonify(error="Stockfish 실행에 실패했습니다: "+str(e)),503
 
 if __name__=="__main__": app.run(host="0.0.0.0",port=int(os.getenv("PORT",5000)))
